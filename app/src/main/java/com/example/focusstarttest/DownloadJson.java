@@ -44,6 +44,7 @@ public class DownloadJson implements Callable<String> {
                 urlConnection.disconnect();
             }
         }
+        Log.i("json", "result");
         return result.toString();
     }
 }

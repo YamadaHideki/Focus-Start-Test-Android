@@ -11,15 +11,18 @@ import android.os.Bundle;
 import android.preference.PreferenceManager;
 import android.util.Log;
 
-import com.google.gson.Gson;
-import com.google.gson.GsonBuilder;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonParser;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -37,13 +40,14 @@ import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 public class MainActivity extends AppCompatActivity {
 
     private final String cbrDailyJsonUrl = "https://www.cbr-xml-daily.ru/daily_json.js";
     private NotesDBHelper dbHelper;
     private SQLiteDatabase database;
-    private final ExecutorService pool = Executors.newFixedThreadPool(4);
+    private final ExecutorService pool = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
     private SharedPreferences preferences;
 
     @Override
@@ -53,7 +57,7 @@ public class MainActivity extends AppCompatActivity {
         preferences = PreferenceManager.getDefaultSharedPreferences(this);
         dbHelper = new NotesDBHelper(this);
         database = dbHelper.getWritableDatabase();
-        database.delete(NotesCbr.NotesJson.TABLE_NAME, null, null);
+        //database.delete(NotesCbr.NotesJson.TABLE_NAME, null, null);
 
         pool.execute(this::updateInfoFromCbr);
 
@@ -66,14 +70,7 @@ public class MainActivity extends AppCompatActivity {
         //preferences.edit().putString("date_json", "2022-03-10T11:30:00+03:00").apply();
 
 
-        Cursor cursor = database.query(NotesCbr.NotesJson.TABLE_NAME, null,
-                null, null, null, null, null);
-        while (cursor.moveToNext()) {
-            @SuppressLint("Range") String valuteTag = cursor.getString(cursor.getColumnIndex(NotesCbr.NotesJson.VALUTE_TAG));
-            @SuppressLint("Range") String valuteName = cursor.getString(cursor.getColumnIndex(NotesCbr.NotesJson.VALUTE_NAME));
-            Log.i("DB", "TAG: " + valuteTag + ", NAME: " + valuteName);
-        }
-        cursor.close();
+
         //Log.i("db", preferences.getString("date_json", null));
 
 
@@ -105,7 +102,47 @@ public class MainActivity extends AppCompatActivity {
             e.printStackTrace();
         }*/
 
-        pool.shutdown();
+        //pool.shutdown();
+    }
+
+    public String downloadJsonFromUrl(String pUrl) {
+        StringBuilder result = new StringBuilder();
+        HttpURLConnection urlConnection = null;
+        try {
+            URL url = new URL(pUrl);
+            urlConnection = (HttpURLConnection) url.openConnection();
+
+            InputStream in = urlConnection.getInputStream();
+            InputStreamReader reader = new InputStreamReader(in);
+            BufferedReader bufferedReader = new BufferedReader(reader);
+            String line = bufferedReader.readLine();
+
+            while (line != null) {
+                result.append(line);
+                line = bufferedReader.readLine();
+            }
+
+        } catch (IOException e) {
+            e.printStackTrace();
+        } finally {
+            if (urlConnection != null) {
+                urlConnection.disconnect();
+            }
+        }
+        Log.i("json", "result");
+        return result.toString();
+    }
+
+    public void getDbInfo() {
+        Cursor cursor = database.query(NotesCbr.NotesJson.TABLE_NAME, null,
+                null, null, null, null, null);
+        while (cursor.moveToNext()) {
+            @SuppressLint("Range") int id = cursor.getInt(cursor.getColumnIndex("_id"));
+            @SuppressLint("Range") String valuteTag = cursor.getString(cursor.getColumnIndex(NotesCbr.NotesJson.VALUTE_TAG));
+            @SuppressLint("Range") String valuteName = cursor.getString(cursor.getColumnIndex(NotesCbr.NotesJson.VALUTE_NAME));
+            Log.i("DB", "ID: " + id + ", TAG: " + valuteTag + ", NAME: " + valuteName);
+        }
+        cursor.close();
     }
 
     public void updateInfoFromCbr() {
@@ -149,8 +186,12 @@ public class MainActivity extends AppCompatActivity {
                         new Date(currentJsonUpdateDate.getTime() + (oneDayInMilliseconds));
 
                 if (today.getTime() > nextJsonUpdateDate.getTime()) {
-                    String json = pool.submit(new DownloadJson(cbrDailyJsonUrl)).get();
+
+                    //Future<String> jsonFuture = pool.submit(new DownloadJson(cbrDailyJsonUrl));
+                    String json = downloadJsonFromUrl(cbrDailyJsonUrl);
+
                     JSONObject jo = new JSONObject(json);
+
                     JSONObject joValute = jo.getJSONObject("Valute");
                     preferences.edit().putString("date_json_update", jo.getString("Date")).apply();
 
@@ -160,30 +201,41 @@ public class MainActivity extends AppCompatActivity {
 
                         ContentValues contentValues = new ContentValues();
                         contentValues.put(NotesCbr.NotesJson.VALUTE_TAG, key);
-                        contentValues.put(NotesCbr.NotesJson.VALUTE_ID, joValute.getString("ID"));
-                        contentValues.put(NotesCbr.NotesJson.VALUTE_NUM_CODE, joValute.getString("NumCode"));
-                        contentValues.put(NotesCbr.NotesJson.VALUTE_CHAR_CODE, joValute.getString("CharCode"));
-                        contentValues.put(NotesCbr.NotesJson.VALUTE_NOMINAL, joValute.getString("Nominal"));
-                        contentValues.put(NotesCbr.NotesJson.VALUTE_NAME, joValute.getString("Name"));
-                        contentValues.put(NotesCbr.NotesJson.VALUTE_VALUE, joValute.getString("Value"));
-                        contentValues.put(NotesCbr.NotesJson.VALUTE_PREVIOUS, joValute.getString("Previous"));
+                        contentValues.put(NotesCbr.NotesJson.VALUTE_ID, joValute.getJSONObject(key).getString("ID"));
+                        contentValues.put(NotesCbr.NotesJson.VALUTE_NUM_CODE, joValute.getJSONObject(key).getString("NumCode"));
+                        contentValues.put(NotesCbr.NotesJson.VALUTE_CHAR_CODE, joValute.getJSONObject(key).getString("CharCode"));
+                        contentValues.put(NotesCbr.NotesJson.VALUTE_NOMINAL, joValute.getJSONObject(key).getString("Nominal"));
+                        contentValues.put(NotesCbr.NotesJson.VALUTE_NAME, joValute.getJSONObject(key).getString("Name"));
+                        contentValues.put(NotesCbr.NotesJson.VALUTE_VALUE, joValute.getJSONObject(key).getString("Value"));
+                        contentValues.put(NotesCbr.NotesJson.VALUTE_PREVIOUS, joValute.getJSONObject(key).getString("Previous"));
 
-                        int id = (int) database.insertWithOnConflict(NotesCbr.NotesJson.TABLE_NAME, null, contentValues, SQLiteDatabase.CONFLICT_IGNORE);
-                        Log.i("DB", String.valueOf(id));
+                        /*int id = (int) database.insertWithOnConflict(NotesCbr.NotesJson.TABLE_NAME, null, contentValues, SQLiteDatabase.CONFLICT_IGNORE);
+                        Log.i("DB_ID", String.valueOf(id));
                         if (id == -1) {
                             Cursor cursor = database.query(NotesCbr.NotesJson.TABLE_NAME, new String[]{"id"},
                                     NotesCbr.NotesJson.VALUTE_TAG + " = ?", new String[]{key}, null, null, null);
                             String updateId = cursor.getString(0);
                             cursor.close();
-                            database.update(NotesCbr.NotesJson.TABLE_NAME, contentValues, "_id=?", new String[]{updateId});
+                            int updateProcessID = database.update(NotesCbr.NotesJson.TABLE_NAME, contentValues, "_id=?", new String[]{updateId});
+                            Log.i("DB_UPDATE_PID", String.valueOf(updateProcessID));
+                        }*/
+                        //Log.i("DB_UPDATE", key);
+                        int updateProcessId = database.update(NotesCbr.NotesJson.TABLE_NAME, contentValues,
+                                NotesCbr.NotesJson.VALUTE_TAG + " = ?", new String[]{key});
+                        //Log.i("DB_UPDATE_PID", "KEY: " + key + " | " + updateProcessId);
+                        if (updateProcessId == 0) {
+                            int insertProcessId = (int) database.insertWithOnConflict(NotesCbr.NotesJson.TABLE_NAME,
+                                    null, contentValues, SQLiteDatabase.CONFLICT_IGNORE);
+                            //Log.i("DB_INSERT_PID", String.valueOf(insertProcessId));
                         }
+
                     }
-                    Log.i("KRIOD", "Update");
+                    Log.i("DB_LOG", "Update");
                 } else {
-                    Log.i("KRIOD", "Cache");
+                    Log.i("DB_LOG", "Use cache");
                 }
             } else {
-                Log.i("DB", "Not empty date_json");
+                Log.i("DB", "Empty date_json");
             }
 
 
@@ -192,7 +244,7 @@ public class MainActivity extends AppCompatActivity {
         } /*catch (ExecutionException | InterruptedException | JSONException | ParseException | NullPointerException e) {
             e.printStackTrace();
         }*/ finally {
-
+            getDbInfo();
         }
     }
 }
