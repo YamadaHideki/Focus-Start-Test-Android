@@ -13,7 +13,7 @@ import java.util.concurrent.Callable;
 
 public class DownloadJson implements Callable<String> {
 
-    private String url;
+    private final String url;
 
     public DownloadJson(String url) {
         this.url = url;

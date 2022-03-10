@@ -1,3 +1,4 @@
 <resources>
     <string name="app_name">FocusStartTest</string>
+    <string name="button_refresh_json_from_cbr">Обновить</string>
 </resources>
