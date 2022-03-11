@@ -1,6 +1,8 @@
 package com.example.focusstarttest;
 
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.recyclerview.widget.LinearLayoutManager;
+import androidx.recyclerview.widget.RecyclerView;
 
 import android.annotation.SuppressLint;
 import android.content.ContentValues;
@@ -32,10 +34,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -44,22 +48,36 @@ import java.util.concurrent.Future;
 
 public class MainActivity extends AppCompatActivity {
 
-    private final String cbrDailyJsonUrl = "https://www.cbr-xml-daily.ru/daily_json.js";
+    private final String CBR_DAILY_JSON_URL = "https://www.cbr-xml-daily.ru/daily_json.js";
     private NotesDBHelper dbHelper;
     private SQLiteDatabase database;
-    private final ExecutorService pool = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
+    private final ExecutorService POOL = Executors.newFixedThreadPool(Runtime.getRuntime().availableProcessors());
     private SharedPreferences preferences;
+    private RecyclerView valuteList;
+    private ValutesAdapter valutesAdapter;
+    //private DbController DB_CONTROLLER;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        preferences = PreferenceManager.getDefaultSharedPreferences(this);
+
         dbHelper = new NotesDBHelper(this);
         database = dbHelper.getWritableDatabase();
+
+        valuteList = findViewById(R.id.rv_valutes);
+        LinearLayoutManager layoutManager = new LinearLayoutManager(this);
+                    valuteList.setLayoutManager(layoutManager);
+        valuteList.setHasFixedSize(true);
+        Map<Integer, Map<String ,String>> map = getDbInfo();
+        valutesAdapter = new ValutesAdapter(map, 30);
+                    valuteList.setAdapter(valutesAdapter);
+
+        preferences = PreferenceManager.getDefaultSharedPreferences(this);
+
         //database.delete(NotesCbr.NotesJson.TABLE_NAME, null, null);
 
-        pool.execute(this::updateInfoFromCbr);
+        POOL.execute(this::updateInfoFromCbr);
 
         /*dbHelper = new NotesDBHelper(this);
         database = dbHelper.getWritableDatabase();*/
@@ -133,16 +151,28 @@ public class MainActivity extends AppCompatActivity {
         return result.toString();
     }
 
-    public void getDbInfo() {
+    public Map<Integer, Map<String, String>> getDbInfo() {
+        int i = 0;
+        Map<Integer, Map<String, String>> result = new HashMap<>();
+
         Cursor cursor = database.query(NotesCbr.NotesJson.TABLE_NAME, null,
                 null, null, null, null, null);
         while (cursor.moveToNext()) {
+            Map<String, String> map = new HashMap<>();
             @SuppressLint("Range") int id = cursor.getInt(cursor.getColumnIndex("_id"));
-            @SuppressLint("Range") String valuteTag = cursor.getString(cursor.getColumnIndex(NotesCbr.NotesJson.VALUTE_TAG));
             @SuppressLint("Range") String valuteName = cursor.getString(cursor.getColumnIndex(NotesCbr.NotesJson.VALUTE_NAME));
-            Log.i("DB", "ID: " + id + ", TAG: " + valuteTag + ", NAME: " + valuteName);
+            @SuppressLint("Range") String valuteValue = cursor.getString(cursor.getColumnIndex(NotesCbr.NotesJson.VALUTE_VALUE));
+            @SuppressLint("Range") String valuteNominal = cursor.getString(cursor.getColumnIndex(NotesCbr.NotesJson.VALUTE_NOMINAL));
+            //Log.i("DB", "ID: " + id + ", TAG: " + valuteTag + ", NAME: " + valuteName);
+
+            map.put(NotesCbr.NotesJson.VALUTE_NAME, valuteName);
+            map.put(NotesCbr.NotesJson.VALUTE_NOMINAL, valuteNominal);
+            map.put(NotesCbr.NotesJson.VALUTE_VALUE, valuteValue);
+            result.put(i, map);
+            i++;
         }
         cursor.close();
+        return result;
     }
 
     public void updateInfoFromCbr() {
@@ -188,7 +218,7 @@ public class MainActivity extends AppCompatActivity {
                 if (today.getTime() > nextJsonUpdateDate.getTime()) {
 
                     //Future<String> jsonFuture = pool.submit(new DownloadJson(cbrDailyJsonUrl));
-                    String json = downloadJsonFromUrl(cbrDailyJsonUrl);
+                    String json = downloadJsonFromUrl(CBR_DAILY_JSON_URL);
 
                     JSONObject jo = new JSONObject(json);
 
