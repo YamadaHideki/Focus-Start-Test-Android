@@ -3,6 +3,7 @@ package com.example.focusstarttest;
 import android.provider.BaseColumns;
 
 public class NotesCbr {
+
     public static final class NotesJson implements BaseColumns {
         public static final String TABLE_NAME = "cbr_json";
         public static final String VALUTE_TAG = "valute_tag";

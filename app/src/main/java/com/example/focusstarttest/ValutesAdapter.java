@@ -59,7 +59,12 @@ public class ValutesAdapter extends RecyclerView.Adapter<ValutesAdapter.ValuteVi
     @Override
     public int getItemCount() {
         //return numberItems;
+        Log.i("MAP", "ADAPTER MAP SIZE: " + map.size());
         return map.size();
+    }
+
+    public void updateData(Map<Integer, Map<String, String>> map) {
+        this.map = map;
     }
 
     class ValuteViewHolder extends RecyclerView.ViewHolder {

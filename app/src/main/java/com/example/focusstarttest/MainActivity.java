@@ -3,6 +3,7 @@ package com.example.focusstarttest;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
+import androidx.swiperefreshlayout.widget.SwipeRefreshLayout;
 
 import android.annotation.SuppressLint;
 import android.content.ContentValues;
@@ -12,6 +13,7 @@ import android.database.sqlite.SQLiteDatabase;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
 import android.util.Log;
+import android.widget.ArrayAdapter;
 
 
 import org.json.JSONArray;
@@ -45,6 +47,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -55,6 +58,8 @@ public class MainActivity extends AppCompatActivity {
     private SharedPreferences preferences;
     private RecyclerView valuteList;
     private ValutesAdapter valutesAdapter;
+    private SwipeRefreshLayout swipeRefreshLayout;
+    private Map<Integer, Map<String, String>> map;
     //private DbController DB_CONTROLLER;
 
     @Override
@@ -64,20 +69,48 @@ public class MainActivity extends AppCompatActivity {
 
         dbHelper = new NotesDBHelper(this);
         database = dbHelper.getWritableDatabase();
+        database.execSQL(NotesCbr.NotesJson.DROP_COMMAND);
+        database.execSQL(NotesCbr.NotesJson.CREATE_COMMAND);
+        preferences = PreferenceManager.getDefaultSharedPreferences(this);
+
+        Future<Boolean> statusUpdateInfo = POOL.submit(this::updateInfoFromCbr);
+        try {
+            statusUpdateInfo.get();
+        } catch (ExecutionException | InterruptedException e) {
+            e.printStackTrace();
+        }
 
         valuteList = findViewById(R.id.rv_valutes);
         LinearLayoutManager layoutManager = new LinearLayoutManager(this);
                     valuteList.setLayoutManager(layoutManager);
         valuteList.setHasFixedSize(true);
-        Map<Integer, Map<String ,String>> map = getDbInfo();
-        valutesAdapter = new ValutesAdapter(map, 30);
+        map = getDbInfo();
+        valutesAdapter = new ValutesAdapter(map, map.size());
                     valuteList.setAdapter(valutesAdapter);
 
-        preferences = PreferenceManager.getDefaultSharedPreferences(this);
+        swipeRefreshLayout = findViewById(R.id.swipe_refresh);
+
+            swipeRefreshLayout.setOnRefreshListener(() -> {
+
+                Future<Boolean> statusUpdateInfo2 = POOL.submit(this::updateInfoFromCbr);
+                try {
+                    statusUpdateInfo2.get();
+                } catch (ExecutionException | InterruptedException e) {
+                    e.printStackTrace();
+                }
+
+                map = getDbInfo();
+                valutesAdapter.updateData(map);
+                valutesAdapter.notifyDataSetChanged();
+                swipeRefreshLayout.setRefreshing(false);
+            });
+
+
+
 
         //database.delete(NotesCbr.NotesJson.TABLE_NAME, null, null);
 
-        POOL.execute(this::updateInfoFromCbr);
+
 
         /*dbHelper = new NotesDBHelper(this);
         database = dbHelper.getWritableDatabase();*/
@@ -86,39 +119,6 @@ public class MainActivity extends AppCompatActivity {
         //DownloadJson downloadJson = new DownloadJson(cbrDailyJsonUrl);
 
         //preferences.edit().putString("date_json", "2022-03-10T11:30:00+03:00").apply();
-
-
-
-        //Log.i("db", preferences.getString("date_json", null));
-
-
-
-
-
-        //try {
-            //String jsonResult = pool.submit(downloadJson).get();
-            //preferences.edit().
-
-        //CbrJson cbrJson = jsonToCbrObject(jsonResult);
-            //Log.i("JSONResult", cbrJson.toString());
-
-            //try {
-                //JSONObject jsonObject = new JSONObject(jsonResult);
-                //JSONObject valute = (JSONObject) jsonObject.get("Valute");
-
-                //Log.i("JSON", valute.toString());
-                /*for (int i = 0; i < valute.length(); i++) {
-                    Log.i("JSON", valute.);
-                }*/
-                //Log.i("JSON Date", jsonObject.getString("Date"));
-            /*} catch (JSONException e) {
-                e.printStackTrace();
-            }*/
-
-            //Log.i("URL", jsonResult);
-        /*} catch (ExecutionException | InterruptedException e) {
-            e.printStackTrace();
-        }*/
 
         //pool.shutdown();
     }
@@ -163,7 +163,6 @@ public class MainActivity extends AppCompatActivity {
             @SuppressLint("Range") String valuteName = cursor.getString(cursor.getColumnIndex(NotesCbr.NotesJson.VALUTE_NAME));
             @SuppressLint("Range") String valuteValue = cursor.getString(cursor.getColumnIndex(NotesCbr.NotesJson.VALUTE_VALUE));
             @SuppressLint("Range") String valuteNominal = cursor.getString(cursor.getColumnIndex(NotesCbr.NotesJson.VALUTE_NOMINAL));
-            //Log.i("DB", "ID: " + id + ", TAG: " + valuteTag + ", NAME: " + valuteName);
 
             map.put(NotesCbr.NotesJson.VALUTE_NAME, valuteName);
             map.put(NotesCbr.NotesJson.VALUTE_NOMINAL, valuteNominal);
@@ -172,37 +171,13 @@ public class MainActivity extends AppCompatActivity {
             i++;
         }
         cursor.close();
+
         return result;
     }
 
-    public void updateInfoFromCbr() {
+    public boolean updateInfoFromCbr() {
         preferences.edit().clear().apply();
         preferences.edit().putString("date_json_update", "2022-03-10T11:30:00+03:00").apply();
-        //String dateJsonUpdateString = preferences.getString("date_json_update", null);
-        /*try {
-            DateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.ENGLISH);
-
-            Date currentJsonUpdateDate = format.parse("2022-03-09T11:30:00+03:00");
-            Date today = new Date();
-            assert currentJsonUpdateDate != null;
-            int oneDayInMilliseconds = 1000 * 60 * 60 * 24;
-            Date nextJsonUpdateDate =
-                    new Date(currentJsonUpdateDate.getTime() + (oneDayInMilliseconds));
-
-            if (today.getTime() > nextJsonUpdateDate.getTime()) {
-                Log.i("KRIOD", "Update");
-            } else {
-                Log.i("KRIOD", "Cache");
-            }
-        } catch (ParseException e) {
-            e.printStackTrace();
-        }
-        //Log.i("KRIO", date.toString());
-        if (dateJsonUpdateString != null) {
-            Log.i("KRIO", dateJsonUpdateString);
-        } else {
-            Log.i("KRIO", "NULL");
-        }*/
 
         try {
             String dateJsonUpdate = preferences.getString("date_json_update", null);
@@ -218,7 +193,10 @@ public class MainActivity extends AppCompatActivity {
                 if (today.getTime() > nextJsonUpdateDate.getTime()) {
 
                     //Future<String> jsonFuture = pool.submit(new DownloadJson(cbrDailyJsonUrl));
+                    Log.i("DB_LOG", "json");
                     String json = downloadJsonFromUrl(CBR_DAILY_JSON_URL);
+
+                    Log.i("DB_LOG", json);
 
                     JSONObject jo = new JSONObject(json);
 
@@ -271,10 +249,8 @@ public class MainActivity extends AppCompatActivity {
 
         } catch (Exception e) {
             e.printStackTrace();
-        } /*catch (ExecutionException | InterruptedException | JSONException | ParseException | NullPointerException e) {
-            e.printStackTrace();
-        }*/ finally {
-            getDbInfo();
         }
+
+        return true;
     }
 }
