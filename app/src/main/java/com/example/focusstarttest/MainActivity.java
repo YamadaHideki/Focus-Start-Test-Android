@@ -60,8 +60,8 @@ public class MainActivity extends AppCompatActivity {
     private ValutesAdapter valutesAdapter;
     private SwipeRefreshLayout swipeRefreshLayout;
     private Map<Integer, Map<String, String>> map;
-    //private DbController DB_CONTROLLER;
 
+    @SuppressLint("NotifyDataSetChanged")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -69,13 +69,13 @@ public class MainActivity extends AppCompatActivity {
 
         dbHelper = new NotesDBHelper(this);
         database = dbHelper.getWritableDatabase();
-        database.execSQL(NotesCbr.NotesJson.DROP_COMMAND);
-        database.execSQL(NotesCbr.NotesJson.CREATE_COMMAND);
+        //database.execSQL(NotesCbr.NotesJson.DROP_COMMAND);
+        //database.execSQL(NotesCbr.NotesJson.CREATE_COMMAND);
         preferences = PreferenceManager.getDefaultSharedPreferences(this);
+        //preferences.edit().clear().apply();
 
-        Future<Boolean> statusUpdateInfo = POOL.submit(this::updateInfoFromCbr);
         try {
-            statusUpdateInfo.get();
+            POOL.submit(this::updateInfoFromCbr).get();
         } catch (ExecutionException | InterruptedException e) {
             e.printStackTrace();
         }
@@ -89,38 +89,26 @@ public class MainActivity extends AppCompatActivity {
                     valuteList.setAdapter(valutesAdapter);
 
         swipeRefreshLayout = findViewById(R.id.swipe_refresh);
+        swipeRefreshLayout.setOnRefreshListener(() -> {
 
-            swipeRefreshLayout.setOnRefreshListener(() -> {
+            try {
+                POOL.submit(() -> {
+                    updateDbFromJson(CBR_DAILY_JSON_URL);
+                }).get();
+            } catch (ExecutionException | InterruptedException e) {
+                e.printStackTrace();
+            }
+            map = getDbInfo();
+            valutesAdapter.updateData(map);
+            valutesAdapter.notifyDataSetChanged();
+            swipeRefreshLayout.setRefreshing(false);
+        });
+    }
 
-                Future<Boolean> statusUpdateInfo2 = POOL.submit(this::updateInfoFromCbr);
-                try {
-                    statusUpdateInfo2.get();
-                } catch (ExecutionException | InterruptedException e) {
-                    e.printStackTrace();
-                }
-
-                map = getDbInfo();
-                valutesAdapter.updateData(map);
-                valutesAdapter.notifyDataSetChanged();
-                swipeRefreshLayout.setRefreshing(false);
-            });
-
-
-
-
-        //database.delete(NotesCbr.NotesJson.TABLE_NAME, null, null);
-
-
-
-        /*dbHelper = new NotesDBHelper(this);
-        database = dbHelper.getWritableDatabase();*/
-
-
-        //DownloadJson downloadJson = new DownloadJson(cbrDailyJsonUrl);
-
-        //preferences.edit().putString("date_json", "2022-03-10T11:30:00+03:00").apply();
-
-        //pool.shutdown();
+    public boolean isEmptyTable(String tableName) {
+        Cursor cursor = database.query(tableName, null, null,
+                null, null, null, null);
+        return cursor != null && cursor.getCount() == 0;
     }
 
     public String downloadJsonFromUrl(String pUrl) {
@@ -163,10 +151,12 @@ public class MainActivity extends AppCompatActivity {
             @SuppressLint("Range") String valuteName = cursor.getString(cursor.getColumnIndex(NotesCbr.NotesJson.VALUTE_NAME));
             @SuppressLint("Range") String valuteValue = cursor.getString(cursor.getColumnIndex(NotesCbr.NotesJson.VALUTE_VALUE));
             @SuppressLint("Range") String valuteNominal = cursor.getString(cursor.getColumnIndex(NotesCbr.NotesJson.VALUTE_NOMINAL));
+            @SuppressLint("Range") String valuteTag = cursor.getString(cursor.getColumnIndex(NotesCbr.NotesJson.VALUTE_TAG));
 
             map.put(NotesCbr.NotesJson.VALUTE_NAME, valuteName);
             map.put(NotesCbr.NotesJson.VALUTE_NOMINAL, valuteNominal);
             map.put(NotesCbr.NotesJson.VALUTE_VALUE, valuteValue);
+            map.put(NotesCbr.NotesJson.VALUTE_TAG, valuteTag);
             result.put(i, map);
             i++;
         }
@@ -175,80 +165,79 @@ public class MainActivity extends AppCompatActivity {
         return result;
     }
 
-    public boolean updateInfoFromCbr() {
-        preferences.edit().clear().apply();
-        preferences.edit().putString("date_json_update", "2022-03-10T11:30:00+03:00").apply();
+    public String updateDbFromJson(String url) {
+        String json = downloadJsonFromUrl(url);
+        try {
+            JSONObject jo = new JSONObject(json);
+            JSONObject joValute = jo.getJSONObject("Valute");
+
+            Log.i("DB_LOG", json);
+
+            Iterator<String> joIterator = joValute.keys();
+            while (joIterator.hasNext()) {
+                String key = joIterator.next();
+
+                ContentValues contentValues = new ContentValues();
+                contentValues.put(NotesCbr.NotesJson.VALUTE_TAG, key);
+                contentValues.put(NotesCbr.NotesJson.VALUTE_ID, joValute.getJSONObject(key).getString("ID"));
+                contentValues.put(NotesCbr.NotesJson.VALUTE_NUM_CODE, joValute.getJSONObject(key).getString("NumCode"));
+                contentValues.put(NotesCbr.NotesJson.VALUTE_CHAR_CODE, joValute.getJSONObject(key).getString("CharCode"));
+                contentValues.put(NotesCbr.NotesJson.VALUTE_NOMINAL, joValute.getJSONObject(key).getString("Nominal"));
+                contentValues.put(NotesCbr.NotesJson.VALUTE_NAME, joValute.getJSONObject(key).getString("Name"));
+                contentValues.put(NotesCbr.NotesJson.VALUTE_VALUE, joValute.getJSONObject(key).getString("Value"));
+                contentValues.put(NotesCbr.NotesJson.VALUTE_PREVIOUS, joValute.getJSONObject(key).getString("Previous"));
+
+                int updateProcessId = database.update(NotesCbr.NotesJson.TABLE_NAME, contentValues,
+                        NotesCbr.NotesJson.VALUTE_TAG + " = ?", new String[]{key});
+                if (updateProcessId == 0) {
+                    int insertProcessId = (int) database.insertWithOnConflict(NotesCbr.NotesJson.TABLE_NAME,
+                            null, contentValues, SQLiteDatabase.CONFLICT_IGNORE);
+                }
+            }
+            return jo.getString("Date");
+        } catch (JSONException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+        public boolean updateInfoFromCbr() {
+        //preferences.edit().putString("date_json_update", "2022-03-10T11:30:00+03:00").apply();
 
         try {
+            //String json = "";
             String dateJsonUpdate = preferences.getString("date_json_update", null);
-            if (dateJsonUpdate != null) {
-                DateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.ENGLISH);
-                //Date currentJsonUpdateDate = format.parse(dateJsonUpdate);
-                Date currentJsonUpdateDate = format.parse("2022-03-09T11:30:00+03:00");
-                Date today = new Date();
-                int oneDayInMilliseconds = 1000 * 60 * 60 * 24;
-                Date nextJsonUpdateDate =
-                        new Date(currentJsonUpdateDate.getTime() + (oneDayInMilliseconds));
 
-                if (today.getTime() > nextJsonUpdateDate.getTime()) {
-
-                    //Future<String> jsonFuture = pool.submit(new DownloadJson(cbrDailyJsonUrl));
-                    Log.i("DB_LOG", "json");
-                    String json = downloadJsonFromUrl(CBR_DAILY_JSON_URL);
-
-                    Log.i("DB_LOG", json);
-
-                    JSONObject jo = new JSONObject(json);
-
-                    JSONObject joValute = jo.getJSONObject("Valute");
-                    preferences.edit().putString("date_json_update", jo.getString("Date")).apply();
-
-                    Iterator<String> joIterator = joValute.keys();
-                    while (joIterator.hasNext()) {
-                        String key = joIterator.next();
-
-                        ContentValues contentValues = new ContentValues();
-                        contentValues.put(NotesCbr.NotesJson.VALUTE_TAG, key);
-                        contentValues.put(NotesCbr.NotesJson.VALUTE_ID, joValute.getJSONObject(key).getString("ID"));
-                        contentValues.put(NotesCbr.NotesJson.VALUTE_NUM_CODE, joValute.getJSONObject(key).getString("NumCode"));
-                        contentValues.put(NotesCbr.NotesJson.VALUTE_CHAR_CODE, joValute.getJSONObject(key).getString("CharCode"));
-                        contentValues.put(NotesCbr.NotesJson.VALUTE_NOMINAL, joValute.getJSONObject(key).getString("Nominal"));
-                        contentValues.put(NotesCbr.NotesJson.VALUTE_NAME, joValute.getJSONObject(key).getString("Name"));
-                        contentValues.put(NotesCbr.NotesJson.VALUTE_VALUE, joValute.getJSONObject(key).getString("Value"));
-                        contentValues.put(NotesCbr.NotesJson.VALUTE_PREVIOUS, joValute.getJSONObject(key).getString("Previous"));
-
-                        /*int id = (int) database.insertWithOnConflict(NotesCbr.NotesJson.TABLE_NAME, null, contentValues, SQLiteDatabase.CONFLICT_IGNORE);
-                        Log.i("DB_ID", String.valueOf(id));
-                        if (id == -1) {
-                            Cursor cursor = database.query(NotesCbr.NotesJson.TABLE_NAME, new String[]{"id"},
-                                    NotesCbr.NotesJson.VALUTE_TAG + " = ?", new String[]{key}, null, null, null);
-                            String updateId = cursor.getString(0);
-                            cursor.close();
-                            int updateProcessID = database.update(NotesCbr.NotesJson.TABLE_NAME, contentValues, "_id=?", new String[]{updateId});
-                            Log.i("DB_UPDATE_PID", String.valueOf(updateProcessID));
-                        }*/
-                        //Log.i("DB_UPDATE", key);
-                        int updateProcessId = database.update(NotesCbr.NotesJson.TABLE_NAME, contentValues,
-                                NotesCbr.NotesJson.VALUTE_TAG + " = ?", new String[]{key});
-                        //Log.i("DB_UPDATE_PID", "KEY: " + key + " | " + updateProcessId);
-                        if (updateProcessId == 0) {
-                            int insertProcessId = (int) database.insertWithOnConflict(NotesCbr.NotesJson.TABLE_NAME,
-                                    null, contentValues, SQLiteDatabase.CONFLICT_IGNORE);
-                            //Log.i("DB_INSERT_PID", String.valueOf(insertProcessId));
-                        }
-
-                    }
-                    Log.i("DB_LOG", "Update");
-                } else {
-                    Log.i("DB_LOG", "Use cache");
+            if (dateJsonUpdate == null) {
+                String date = updateDbFromJson(CBR_DAILY_JSON_URL);
+                if (date != null) {
+                    preferences.edit().putString("date_json_update", date).apply();
                 }
-            } else {
-                Log.i("DB", "Empty date_json");
+                dateJsonUpdate = preferences.getString("date_json_update", null);
+                Log.i("DB_LOG", "Use new date");
             }
 
+            DateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.ENGLISH);
+            Date currentJsonUpdateDate = format.parse(dateJsonUpdate);
+            //Date currentJsonUpdateDate = format.parse("2022-03-09T11:30:00+03:00");
+            Date today = new Date();
+            int oneDayInMilliseconds = 1000 * 60 * 60 * 24;
+            Date nextJsonUpdateDate =
+                    new Date(currentJsonUpdateDate.getTime() + (oneDayInMilliseconds));
+
+            if (today.getTime() > nextJsonUpdateDate.getTime()) {
+                updateDbFromJson(CBR_DAILY_JSON_URL);
+                Log.i("DB_LOG", "Update");
+            } else {
+                if (isEmptyTable(NotesCbr.NotesJson.TABLE_NAME)) {
+                    updateDbFromJson(CBR_DAILY_JSON_URL);
+                }
+                Log.i("DB_LOG", "Use cache");
+            }
 
         } catch (Exception e) {
             e.printStackTrace();
+            return false;
         }
 
         return true;

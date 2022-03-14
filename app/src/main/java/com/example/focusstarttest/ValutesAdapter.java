@@ -6,31 +6,42 @@ import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.ViewParent;
 import android.widget.TextView;
 
 import androidx.annotation.NonNull;
+import androidx.constraintlayout.widget.ConstraintLayout;
 import androidx.recyclerview.widget.RecyclerView;
+
+import com.google.android.material.navigation.NavigationView;
+
+import org.w3c.dom.Text;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 
 public class ValutesAdapter extends RecyclerView.Adapter<ValutesAdapter.ValuteViewHolder> {
 
     private static int viewHolderCount;
     private int numberItems;
     private Map<Integer, Map<String, String>> map;
+    private Context context;
+    private ViewGroup viewGroup;
 
     public ValutesAdapter(Map<Integer, Map<String, String>> map, int numberItems) {
         this.numberItems = numberItems;
         viewHolderCount = 0;
         this.map = map;
+
         Log.i("MAP", String.valueOf(map.size()));
     }
 
     @NonNull
     @Override
     public ValuteViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        Context context = parent.getContext();
+        viewGroup = parent;
+        context = parent.getContext();
         int layoutIdForListItem = R.layout.valute_list_item;
 
         LayoutInflater inflater = LayoutInflater.from(context);
@@ -53,7 +64,10 @@ public class ValutesAdapter extends RecyclerView.Adapter<ValutesAdapter.ValuteVi
             holder.bind(dbMap.get(NotesCbr.NotesJson.VALUTE_NAME), dbMap.get(NotesCbr.NotesJson.VALUTE_NOMINAL) + " шт.",
                     String.format("%.2f р.", Double.parseDouble(dbMap.get(NotesCbr.NotesJson.VALUTE_VALUE))));
         }
-
+        holder.itemView.setOnClickListener(v -> {
+            /* ? */
+        });
+        Log.i("MAPDB", dbMap.get(NotesCbr.NotesJson.VALUTE_TAG));
     }
 
     @Override
