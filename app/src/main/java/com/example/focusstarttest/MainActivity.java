@@ -12,11 +12,7 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.os.Bundle;
 import android.preference.PreferenceManager;
-import android.util.Log;
-import android.widget.ArrayAdapter;
 
-
-import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -25,29 +21,17 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.text.DateFormat;
-import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatterBuilder;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Iterator;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -69,10 +53,8 @@ public class MainActivity extends AppCompatActivity {
 
         dbHelper = new NotesDBHelper(this);
         database = dbHelper.getWritableDatabase();
-        //database.execSQL(NotesCbr.NotesJson.DROP_COMMAND);
-        //database.execSQL(NotesCbr.NotesJson.CREATE_COMMAND);
+        database.execSQL(NotesCbr.NotesJson.CREATE_COMMAND);
         preferences = PreferenceManager.getDefaultSharedPreferences(this);
-        //preferences.edit().clear().apply();
 
         try {
             POOL.submit(this::updateInfoFromCbr).get();
@@ -135,7 +117,6 @@ public class MainActivity extends AppCompatActivity {
                 urlConnection.disconnect();
             }
         }
-        Log.i("json", "result");
         return result.toString();
     }
 
@@ -171,8 +152,6 @@ public class MainActivity extends AppCompatActivity {
             JSONObject jo = new JSONObject(json);
             JSONObject joValute = jo.getJSONObject("Valute");
 
-            Log.i("DB_LOG", json);
-
             Iterator<String> joIterator = joValute.keys();
             while (joIterator.hasNext()) {
                 String key = joIterator.next();
@@ -202,10 +181,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
         public boolean updateInfoFromCbr() {
-        //preferences.edit().putString("date_json_update", "2022-03-10T11:30:00+03:00").apply();
 
         try {
-            //String json = "";
             String dateJsonUpdate = preferences.getString("date_json_update", null);
 
             if (dateJsonUpdate == null) {
@@ -214,12 +191,10 @@ public class MainActivity extends AppCompatActivity {
                     preferences.edit().putString("date_json_update", date).apply();
                 }
                 dateJsonUpdate = preferences.getString("date_json_update", null);
-                Log.i("DB_LOG", "Use new date");
             }
 
             DateFormat format = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.ENGLISH);
             Date currentJsonUpdateDate = format.parse(dateJsonUpdate);
-            //Date currentJsonUpdateDate = format.parse("2022-03-09T11:30:00+03:00");
             Date today = new Date();
             int oneDayInMilliseconds = 1000 * 60 * 60 * 24;
             Date nextJsonUpdateDate =
@@ -227,12 +202,10 @@ public class MainActivity extends AppCompatActivity {
 
             if (today.getTime() > nextJsonUpdateDate.getTime()) {
                 updateDbFromJson(CBR_DAILY_JSON_URL);
-                Log.i("DB_LOG", "Update");
             } else {
                 if (isEmptyTable(NotesCbr.NotesJson.TABLE_NAME)) {
                     updateDbFromJson(CBR_DAILY_JSON_URL);
                 }
-                Log.i("DB_LOG", "Use cache");
             }
 
         } catch (Exception e) {

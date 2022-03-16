@@ -26,22 +26,17 @@ public class ValutesAdapter extends RecyclerView.Adapter<ValutesAdapter.ValuteVi
     private static int viewHolderCount;
     private int numberItems;
     private Map<Integer, Map<String, String>> map;
-    private Context context;
-    private ViewGroup viewGroup;
 
     public ValutesAdapter(Map<Integer, Map<String, String>> map, int numberItems) {
         this.numberItems = numberItems;
         viewHolderCount = 0;
         this.map = map;
-
-        Log.i("MAP", String.valueOf(map.size()));
     }
 
     @NonNull
     @Override
     public ValuteViewHolder onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
-        viewGroup = parent;
-        context = parent.getContext();
+        Context context = parent.getContext();
         int layoutIdForListItem = R.layout.valute_list_item;
 
         LayoutInflater inflater = LayoutInflater.from(context);
@@ -57,7 +52,6 @@ public class ValutesAdapter extends RecyclerView.Adapter<ValutesAdapter.ValuteVi
     @SuppressLint("Range")
     @Override
     public void onBindViewHolder(@NonNull ValuteViewHolder holder, int position) {
-        //String tag = Objects.requireNonNull(map.get(position)).get(0);
         Map<String, String> dbMap = map.get(position);
         if (dbMap != null) {
             Log.i("MAP", dbMap.toString());
@@ -67,13 +61,10 @@ public class ValutesAdapter extends RecyclerView.Adapter<ValutesAdapter.ValuteVi
         holder.itemView.setOnClickListener(v -> {
             /* ? */
         });
-        Log.i("MAPDB", dbMap.get(NotesCbr.NotesJson.VALUTE_TAG));
     }
 
     @Override
     public int getItemCount() {
-        //return numberItems;
-        Log.i("MAP", "ADAPTER MAP SIZE: " + map.size());
         return map.size();
     }
 
